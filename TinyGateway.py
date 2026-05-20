@@ -1,69 +1,80 @@
 import paho.mqtt.client as mqtt
 import json
+import logging
 import time
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger(__name__)
 
 # --------------------------------------
 # Configuration
 # --------------------------------------
-THINGSBOARD_HOST = 'app.coreiot.io'  # replace with your gateway address
-THINGSBOARD_PORT = 1883  # default is 1883 for non-TLS
-ACCESS_TOKEN = 'rHa5SAQEanvnWzXnqDNi'  # replace with your device access token
+THINGSBOARD_HOST = 'app.coreiot.io'
+THINGSBOARD_PORT = 1883
+ACCESS_TOKEN = 'snFgWllzx57Vk6KRoodS'
 
+LOCAL_HOST = '127.0.0.1'
+LOCAL_PORT = 1883
+LOCAL_TOPIC = 'devices/+/telemetry'  # e.g. devices/CCBA970DEB20/telemetry
 
 # --------------------------------------
-# MQTT Callback functions (optional, for logging)
+# ThingsBoard client (upstream)
 # --------------------------------------
-def on_connect(client, userdata, flags, rc):
+def on_tb_connect(client, userdata, flags, rc):
     if rc == 0:
-        print("Connected to ThingsBoard!")
+        logger.info("Connected to ThingsBoard (%s:%s)", THINGSBOARD_HOST, THINGSBOARD_PORT)
     else:
-        print("Failed to connect, return code %d\n", rc)
+        logger.error("Failed to connect to ThingsBoard (rc=%s)", rc)
 
-
-def on_publish(client, userdata, mid):
-    print("Message published!")
-
-
-# --------------------------------------
-# Setup MQTT client
-# --------------------------------------
-client = mqtt.Client()
-client.username_pw_set(ACCESS_TOKEN)
-client.on_connect = on_connect
-client.on_publish = on_publish
-
-client.connect(THINGSBOARD_HOST, THINGSBOARD_PORT, 60)
-client.loop_start()
+tb_client = mqtt.Client("TinyGateway_TB")
+tb_client.username_pw_set(ACCESS_TOKEN)
+tb_client.on_connect = on_tb_connect
+tb_client.connect(THINGSBOARD_HOST, THINGSBOARD_PORT, 60)
+tb_client.loop_start()
 
 # --------------------------------------
-# Publish Data Loop
+# Local broker client (downstream)
 # --------------------------------------
-try:
-    while True:
-        # Example telemetry payload
+def on_local_connect(client, userdata, flags, rc):
+    if rc == 0:
+        logger.info("Connected to local broker, subscribing to '%s'", LOCAL_TOPIC)
+        client.subscribe(LOCAL_TOPIC, qos=0)
+    else:
+        logger.error("Failed to connect to local broker (rc=%s)", rc)
+
+def on_message(client, userdata, msg):
+    try:
+        parts = msg.topic.split("/")
+        device_id = parts[1]  # devices/ESP32_001/sensors → ESP32_001
+        values = json.loads(msg.payload.decode("utf-8"))
 
         telemetry = {
-            "ESP32_001": [
-                {"ts": int(time.time() * 1000), "values": {"temperature": 22.5, "humidity": 55}}
-            ],
-            "ESP32_002": [
-                {"ts": int(time.time() * 1000), "values": {"temperature": 30.5, "humidity": 80}}
-            ],
-            "ESP32_003": [
-                {"ts": int(time.time() * 1000), "values": {"temperature": 10.5, "humidity": 20}}
-            ]
+            device_id: [{"ts": int(time.time() * 1000), "values": values}]
         }
+        result = tb_client.publish("v1/gateway/telemetry", json.dumps(telemetry))
+        logger.info("Forwarded [%s] → ThingsBoard (rc=%s)", device_id, result.rc)
+    except json.JSONDecodeError:
+        logger.error("Invalid JSON payload on topic %s: %s", msg.topic, msg.payload)
+    except IndexError:
+        logger.error("Unexpected topic format: %s", msg.topic)
 
-        # Convert to JSON and publish!
-        payload = json.dumps(telemetry)
-        # Telemetry publish topic in ThingsBoard
-        result = client.publish('v1/gateway/telemetry', payload)
+local_client = mqtt.Client("TinyGateway_Local")
+local_client.on_connect = on_local_connect
+local_client.on_message = on_message
 
-        time.sleep(5)  # publish every 5 seconds
-
+# --------------------------------------
+# Run
+# --------------------------------------
+try:
+    local_client.connect(LOCAL_HOST, LOCAL_PORT, 60)
+    local_client.loop_forever()
 except KeyboardInterrupt:
-    print('Interrupted!')
-
+    logger.info("Interrupted, shutting down")
 finally:
-    client.loop_stop()
-    client.disconnect()
+    local_client.disconnect()
+    tb_client.loop_stop()
+    tb_client.disconnect()

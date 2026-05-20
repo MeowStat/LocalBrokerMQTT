@@ -15,7 +15,7 @@ def on_publish(client, userdata, mid):
 
 #client = mqtt.Client("PythonPublisher")
 client = mqtt.Client()
-client.username_pw_set("mqttclient", "12345678")
+# client.username_pw_set("mqttclient", "12345678")
 client.on_connect = on_connect
 client.on_publish = on_publish
 client.connect(broker_address, 1883)

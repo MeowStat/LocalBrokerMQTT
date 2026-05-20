@@ -1,10 +1,17 @@
 import asyncio
-from turtledemo.forest import start
+import logging
 
 from hbmqtt.broker import Broker
 import threading
 import time
 import paho.mqtt.client as mqtt
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger(__name__)
 
 # === Broker Configuration ===
 broker_config = {
@@ -32,7 +39,7 @@ def start_broker():
     async def broker_coro():
         broker = Broker(broker_config)
         await broker.start()
-        print("MQTT Broker started...")
+        logger.info("MQTT Broker started on 0.0.0.0:1883")
 
     # Each thread needs its own event loop
     loop = asyncio.new_event_loop()
@@ -46,16 +53,22 @@ def run_subscriber():
     topic = "#" #subscribe to all topics
 
     def on_message(client, userdata, msg):
-        print("Received:", msg.topic, msg.payload.decode("utf-8"))
+        # msg.topic = "devices/A4CF125B3C2D/telemetry"
+        parts = msg.topic.split("/")
+        device_mac = parts[1] if len(parts) > 1 else msg.topic
+        logger.info("[%s] topic=%s payload=%s", device_mac, msg.topic, msg.payload.decode("utf-8"))
 
     def on_subscribe(client, userdata, mid, granted_qos):
-        print("✅ Subscribed successfully.")
+        logger.info("Subscribed successfully (mid=%s, qos=%s)", mid, granted_qos)
 
     def on_connect(client, userdata, flags, rc):
-        print("Connected.")
-        client.subscribe(topic, qos=0)
+        if rc == 0:
+            logger.info("Subscriber connected to broker")
+            client.subscribe(topic, qos=0)
+        else:
+            logger.error("Subscriber connection failed (rc=%s)", rc)
 
-    client = mqtt.Client("PythonSubscriber")
+    client = mqtt.Client("TinyMQTTMonitor")
     client.on_message = on_message
     client.on_subscribe = on_subscribe
     client.on_connect = on_connect
@@ -63,17 +76,28 @@ def run_subscriber():
     # Wait a bit for the broker to start
     time.sleep(2)
 
-    client.connect(broker_address, 1883)
-    client.loop_forever()
+    try:
+        client.connect(broker_address, 1883)
+        client.loop_forever()
+    except Exception:
+        logger.exception("Subscriber encountered an error")
 
 if __name__ == "__main__":
     # Broker in one thread
-    broker_thread = threading.Thread(target=start_broker, daemon=True)
-    broker_thread.start()
+    try:
+        broker_thread = threading.Thread(target=start_broker, daemon=True)
+        broker_thread.start()
+        logger.info("Broker thread started")
+    except Exception:
+        logger.exception("Failed to start broker thread")
 
     # Subscriber in another thread
-    subscriber_thread = threading.Thread(target=run_subscriber, daemon=True)
-    subscriber_thread.start()
+    try:
+        subscriber_thread = threading.Thread(target=run_subscriber, daemon=True)
+        subscriber_thread.start()
+        logger.info("Subscriber thread started")
+    except Exception:
+        logger.exception("Failed to start subscriber thread")
 
 
     # Keep the main program alive
