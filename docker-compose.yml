@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  mqtt-broker:
+    build: .
+    container_name: tinymqtt_broker
+    command: python3 TinyMQTT.py
+    ports:
+      - "1883:1883"
+    volumes:
+      - .:/app
+    restart: always
+
+  gateway:
+    build: .
+    container_name: tinymqtt_gateway
+    command: python3 TinyGateway.py
+    env_file:
+      - .env
+    environment:
+      - LOCAL_BROKER_HOST=mqtt-broker
+    volumes:
+      - .:/app
+    depends_on:
+      - mqtt-broker
+    restart: always

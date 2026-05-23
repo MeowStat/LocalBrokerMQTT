@@ -47,9 +47,11 @@ def start_broker():
     loop.run_until_complete(broker_coro())
     loop.run_forever()
 
+import os
+
 # === MQTT Subscriber (in thread) ===
 def run_subscriber():
-    broker_address = "127.0.0.1"
+    broker_address = os.environ.get('LOCAL_BROKER_HOST', '127.0.0.1')
     topic = "#" #subscribe to all topics
 
     def on_message(client, userdata, msg):
