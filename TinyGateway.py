@@ -6,11 +6,25 @@ import os
 import sqlite3
 import threading
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
+from logging.handlers import RotatingFileHandler
+
+os.makedirs('logs', exist_ok=True)
+
+# Configure root logger
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+
+# Console handler
+ch = logging.StreamHandler()
+ch.setFormatter(formatter)
+root_logger.addHandler(ch)
+
+# Rotating file handler (5MB per file, keep 3 backups)
+fh = RotatingFileHandler('logs/gateway.log', maxBytes=5*1024*1024, backupCount=3)
+fh.setFormatter(formatter)
+root_logger.addHandler(fh)
+
 logger = logging.getLogger(__name__)
 
 # --------------------------------------

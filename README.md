@@ -68,3 +68,21 @@ Make sure to activate the environment before running the scripts:
 ```bash
 conda activate tinymqtt
 ```
+
+## Security Hardening (Phase 5)
+
+By default, the `TinyMQTT.py` broker allows anonymous connections to make local development easier. If you are deploying this in a network where you want to restrict who can publish telemetry data, you should enable password authentication.
+
+### How to Enable Password Auth:
+1. Open `TinyMQTT.py` and locate the `broker_config` dictionary.
+2. Change `allow-anonymous` to `False`.
+3. Uncomment the `plugins` and `password-file` lines:
+   ```python
+   'auth': {
+       'allow-anonymous': False,
+       'plugins': ['auth_file'],
+       'password-file': 'password_file.txt'
+   }
+   ```
+4. Create a `password_file.txt` in the root directory. You can use the `hbmqtt_passwd` utility (installed with `hbmqtt`) to generate passwords.
+5. Restart the broker (`docker-compose restart mqtt-broker`).
