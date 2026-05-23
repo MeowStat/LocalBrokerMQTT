@@ -6,11 +6,26 @@ import threading
 import time
 import paho.mqtt.client as mqtt
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
+import os
+from logging.handlers import RotatingFileHandler
+
+os.makedirs('logs', exist_ok=True)
+
+# Configure root logger
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+
+# Console handler
+ch = logging.StreamHandler()
+ch.setFormatter(formatter)
+root_logger.addHandler(ch)
+
+# Rotating file handler
+fh = RotatingFileHandler('logs/broker.log', maxBytes=5*1024*1024, backupCount=3)
+fh.setFormatter(formatter)
+root_logger.addHandler(fh)
+
 logger = logging.getLogger(__name__)
 
 # === Broker Configuration ===
@@ -47,9 +62,11 @@ def start_broker():
     loop.run_until_complete(broker_coro())
     loop.run_forever()
 
+import os
+
 # === MQTT Subscriber (in thread) ===
 def run_subscriber():
-    broker_address = "127.0.0.1"
+    broker_address = os.environ.get('LOCAL_BROKER_HOST', '127.0.0.1')
     topic = "#" #subscribe to all topics
 
     def on_message(client, userdata, msg):
